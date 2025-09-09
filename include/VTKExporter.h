@@ -36,6 +36,26 @@ public:
     static bool exportMesh(const BoundaryMesh& mesh, const std::string& filename);
 
     /**
+     * @brief Export a boundary mesh to VTK format with custom material and region data
+     * 
+     * This method allows exporting a mesh with custom arrays of material IDs,
+     * region IDs, and layer names. This is useful for exporting meshes where
+     * the region data is not directly available from a DeviceLayer object.
+     * 
+     * @param mesh The boundary mesh to export
+     * @param filename Output VTK filename
+     * @param materialIds Vector of material IDs for each element
+     * @param regionIds Vector of region IDs for each element
+     * @param layerNames Vector of layer names (currently unused but kept for compatibility)
+     * @return true if export was successful, false otherwise
+     */
+    static bool exportMeshWithCustomData(const BoundaryMesh& mesh, 
+                                        const std::string& filename,
+                                        const std::vector<int>& materialIds, 
+                                        const std::vector<int>& regionIds, 
+                                        const std::vector<std::string>& layerNames = {});
+
+    /**
      * @brief Export a boundary mesh with enhanced region information
      * 
      * Exports mesh with additional cell data attributes including:

@@ -23,12 +23,88 @@ bool VTKExporter::exportMesh(const BoundaryMesh& mesh, const std::string& filena
         file << "5" << std::endl;
     }
     
+    // Ensure file ends properly
+    file << std::endl;
     file.close();
     std::cout << "Exported mesh to VTK file: " << filename << std::endl;
     return true;
 }
 
-bool VTKExporter::exportMeshWithRegions(const BoundaryMesh& mesh, 
+bool VTKExporter::exportMeshWithCustomData(const BoundaryMesh& mesh, 
+                                          const std::string& filename,
+                                          const std::vector<int>& materialIds, 
+                                          const std::vector<int>& regionIds, 
+                                          const std::vector<std::string>& /* layerNames */) {
+    std::ofstream file(filename);
+    if (!file.is_open()) {
+        std::cerr << "Cannot open file for writing: " << filename << std::endl;
+        return false;
+    }
+    
+    writeVTKHeader(file, "Semiconductor Device Boundary Mesh with Custom Regions");
+    writeVTKPoints(file, mesh);
+    writeVTKCells(file, mesh);
+    
+    // Cell types (5 = triangle)
+    file << "CELL_TYPES " << mesh.getElementCount() << std::endl;
+    for (size_t i = 0; i < mesh.getElementCount(); i++) {
+        file << "5" << std::endl;
+    }
+    
+    // Cell data - this is where we add region information
+    file << "CELL_DATA " << mesh.getElementCount() << std::endl;
+    
+    // Material ID data
+    if (!materialIds.empty() && materialIds.size() >= mesh.getElementCount()) {
+        file << "SCALARS MaterialID int 1" << std::endl;
+        file << "LOOKUP_TABLE default" << std::endl;
+        for (size_t i = 0; i < mesh.getElementCount(); i++) {
+            file << materialIds[i] << std::endl;
+        }
+        file << std::endl;
+    }
+    
+    // Region ID data
+    if (!regionIds.empty() && regionIds.size() >= mesh.getElementCount()) {
+        file << "SCALARS RegionID int 1" << std::endl;
+        file << "LOOKUP_TABLE default" << std::endl;
+        for (size_t i = 0; i < mesh.getElementCount(); i++) {
+            file << regionIds[i] << std::endl;
+        }
+        file << std::endl;
+    }
+    
+    // Face ID data (existing functionality)
+    file << "SCALARS FaceID int 1" << std::endl;
+    file << "LOOKUP_TABLE default" << std::endl;
+    const auto& elements = mesh.getElements();
+    for (const auto& element : elements) {
+        file << element->faceId << std::endl;
+    }
+    file << std::endl;
+    
+    // Element quality data
+    file << "SCALARS ElementQuality float 1" << std::endl;
+    file << "LOOKUP_TABLE default" << std::endl;
+    for (const auto& element : elements) {
+        double quality = mesh.calculateElementQuality(*element);
+        file << quality << std::endl;
+    }
+    file << std::endl;
+    
+    // Element area data
+    file << "SCALARS ElementArea float 1" << std::endl;
+    file << "LOOKUP_TABLE default" << std::endl;
+    for (const auto& element : elements) {
+        file << element->area << std::endl;
+    }
+    
+    file.close();
+    std::cout << "Exported mesh with custom region data to VTK file: " << filename << std::endl;
+    return true;
+}
+
+bool VTKExporter::exportMeshWithRegions(const BoundaryMesh& mesh,
                                        const DeviceLayer& layer,
                                        int layerIndex,
                                        const std::string& filename) {

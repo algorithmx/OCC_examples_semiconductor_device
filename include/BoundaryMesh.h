@@ -121,10 +121,7 @@ public:
     double calculateMeshSurfaceArea() const;
     double calculateElementQuality(const MeshElement& element) const;
     
-    // Export functions
-    void exportToVTK(const std::string& filename) const;
-    void exportToVTK(const std::string& filename, const std::vector<int>& materialIds, 
-                    const std::vector<int>& regionIds, const std::vector<std::string>& layerNames) const;
+    // Export functions (VTK export functionality moved to VTKExporter class)
     void exportToSTL(const std::string& filename) const;
     void exportToGMSH(const std::string& filename) const;
     void exportToOBJ(const std::string& filename) const;

@@ -189,7 +189,9 @@ void SemiconductorDevice::exportMesh(const std::string& filename, const std::str
     std::transform(upperFormat.begin(), upperFormat.end(), upperFormat.begin(), ::toupper);
     
     if (upperFormat == "VTK") {
-        m_globalMesh->exportToVTK(filename);
+        if (!VTKExporter::exportMesh(*m_globalMesh, filename)) {
+            throw std::runtime_error("Failed to export mesh to VTK file: " + filename);
+        }
     } else if (upperFormat == "STL") {
         m_globalMesh->exportToSTL(filename);
     } else if (upperFormat == "GMSH") {
