@@ -123,6 +123,7 @@ public:
     DeviceLayer* getLayer(const std::string& layerName);
     const DeviceLayer* getLayer(const std::string& layerName) const;
     size_t getLayerCount() const { return m_layers.size(); }
+    const std::vector<std::unique_ptr<DeviceLayer>>& getLayers() const { return m_layers; }
     
     // Device properties
     const std::string& getName() const { return m_deviceName; }
@@ -143,6 +144,7 @@ public:
     // Analysis and export
     void exportGeometry(const std::string& filename, const std::string& format = "STEP") const;
     void exportMesh(const std::string& filename, const std::string& format = "VTK") const;
+    void exportMeshWithRegions(const std::string& filename, const std::string& format = "VTK") const;
     
     // Utility functions
     std::vector<DeviceLayer*> getLayersByRegion(DeviceRegion region);
@@ -156,6 +158,35 @@ public:
     void printDeviceInfo() const;
     double getTotalVolume() const;
     std::map<MaterialType, double> getVolumesByMaterial() const;
+    
+    // Utility functions for export
+    static int getMaterialTypeId(MaterialType type);
+    static int getDeviceRegionId(DeviceRegion region);
+    static std::string getMaterialTypeName(MaterialType type);
+    static std::string getDeviceRegionName(DeviceRegion region);
+    
+    // Material factory methods
+    static MaterialProperties createStandardSilicon();
+    static MaterialProperties createStandardSiliconDioxide();
+    static MaterialProperties createStandardPolysilicon();
+    static MaterialProperties createStandardMetal();
+    
+    // Device template methods
+    void createSimpleMOSFET(double length, double width, double substrateHeight,
+                           double oxideHeight, double gateHeight);
+    void generateAllLayerMeshes(double substrateMeshSize, double oxideMeshSize, double gateMeshSize);
+    void generateAllLayerMeshes(); // With default mesh sizes
+    
+    // Validation and export workflow
+    struct ValidationResult {
+        bool geometryValid;
+        bool meshValid;
+        std::string geometryMessage;
+        std::string meshMessage;
+    };
+    
+    ValidationResult validateDevice() const;
+    void exportDeviceComplete(const std::string& baseName, bool includeRegions = true) const;
 };
 
 #endif // SEMICONDUCTOR_DEVICE_H

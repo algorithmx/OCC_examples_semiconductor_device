@@ -77,7 +77,6 @@ private:
     void buildConnectivity();
     
     // Mesh quality assessment
-    double calculateElementQuality(const MeshElement& element) const;
     double calculateTriangleAngle(const gp_Pnt& p1, const gp_Pnt& p2, const gp_Pnt& p3) const;
 
 public:
@@ -120,9 +119,12 @@ public:
     std::vector<MeshElement*> getLowQualityElements(double threshold = 0.3) const;
     double calculateMeshVolume() const;
     double calculateMeshSurfaceArea() const;
+    double calculateElementQuality(const MeshElement& element) const;
     
     // Export functions
     void exportToVTK(const std::string& filename) const;
+    void exportToVTK(const std::string& filename, const std::vector<int>& materialIds, 
+                    const std::vector<int>& regionIds, const std::vector<std::string>& layerNames) const;
     void exportToSTL(const std::string& filename) const;
     void exportToGMSH(const std::string& filename) const;
     void exportToOBJ(const std::string& filename) const;

@@ -1,4 +1,5 @@
 #include "BoundaryMesh.h"
+#include "VTKExporter.h"
 
 #include <iostream>
 #include <fstream>
@@ -398,29 +399,22 @@ double BoundaryMesh::calculateMeshSurfaceArea() const {
 }
 
 void BoundaryMesh::exportToVTK(const std::string& filename) const {
+    if (!VTKExporter::exportMesh(*this, filename)) {
+        throw std::runtime_error("Failed to export mesh to VTK file: " + filename);
+    }
+}
+
+void BoundaryMesh::exportToVTK(const std::string& filename, const std::vector<int>& materialIds, 
+                              const std::vector<int>& regionIds, const std::vector<std::string>& /* layerNames */) const {
     std::ofstream file(filename);
     if (!file.is_open()) {
         throw std::runtime_error("Cannot open file for writing: " + filename);
     }
     
-    // VTK header
-    file << "# vtk DataFile Version 3.0" << std::endl;
-    file << "Boundary Mesh" << std::endl;
-    file << "ASCII" << std::endl;
-    file << "DATASET UNSTRUCTURED_GRID" << std::endl;
-    
-    // Points
-    file << "POINTS " << m_nodes.size() << " float" << std::endl;
-    for (const auto& node : m_nodes) {
-        file << node->point.X() << " " << node->point.Y() << " " << node->point.Z() << std::endl;
-    }
-    
-    // Cells
-    file << "CELLS " << m_elements.size() << " " << (m_elements.size() * 4) << std::endl;
-    for (const auto& element : m_elements) {
-        file << "3 " << element->nodeIds[0] << " " 
-             << element->nodeIds[1] << " " << element->nodeIds[2] << std::endl;
-    }
+    // Use VTKExporter for basic structure
+    VTKExporter::writeVTKHeader(file, "Semiconductor Device Boundary Mesh with Regions");
+    VTKExporter::writeVTKPoints(file, *this);
+    VTKExporter::writeVTKCells(file, *this);
     
     // Cell types (5 = triangle)
     file << "CELL_TYPES " << m_elements.size() << std::endl;
@@ -428,8 +422,55 @@ void BoundaryMesh::exportToVTK(const std::string& filename) const {
         file << "5" << std::endl;
     }
     
+    // Cell data - this is where we add region information
+    file << "CELL_DATA " << m_elements.size() << std::endl;
+    
+    // Material ID data
+    if (!materialIds.empty() && materialIds.size() >= m_elements.size()) {
+        file << "SCALARS MaterialID int 1" << std::endl;
+        file << "LOOKUP_TABLE default" << std::endl;
+        for (size_t i = 0; i < m_elements.size(); i++) {
+            file << materialIds[i] << std::endl;
+        }
+        file << std::endl;
+    }
+    
+    // Region ID data
+    if (!regionIds.empty() && regionIds.size() >= m_elements.size()) {
+        file << "SCALARS RegionID int 1" << std::endl;
+        file << "LOOKUP_TABLE default" << std::endl;
+        for (size_t i = 0; i < m_elements.size(); i++) {
+            file << regionIds[i] << std::endl;
+        }
+        file << std::endl;
+    }
+    
+    // Face ID data (existing functionality)
+    file << "SCALARS FaceID int 1" << std::endl;
+    file << "LOOKUP_TABLE default" << std::endl;
+    for (const auto& element : m_elements) {
+        file << element->faceId << std::endl;
+    }
+    file << std::endl;
+    
+    // Element quality data
+    file << "SCALARS ElementQuality float 1" << std::endl;
+    file << "LOOKUP_TABLE default" << std::endl;
+    for (const auto& element : m_elements) {
+        double quality = calculateElementQuality(*element);
+        file << quality << std::endl;
+    }
+    file << std::endl;
+    
+    // Element area data
+    file << "SCALARS ElementArea float 1" << std::endl;
+    file << "LOOKUP_TABLE default" << std::endl;
+    for (const auto& element : m_elements) {
+        file << element->area << std::endl;
+    }
+    
     file.close();
-    std::cout << "Exported mesh to VTK file: " << filename << std::endl;
+    std::cout << "Exported mesh with region data to VTK file: " << filename << std::endl;
 }
 
 void BoundaryMesh::exportToSTL(const std::string& filename) const {

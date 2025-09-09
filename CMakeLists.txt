@@ -11,8 +11,26 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # Compiler flags
-set(CMAKE_CXX_FLAGS_DEBUG "-g -Wall -Wextra")
+set(CMAKE_CXX_FLAGS_DEBUG "-g -Wall -Wextra -Wno-unused-parameter")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
+
+# Suppress noisy warnings from system headers (OpenCASCADE)
+if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_compile_options(
+        -Wno-attributes
+        -Wno-unknown-pragmas
+        -Wno-extra  # Suppress extra warnings from system headers
+    )
+endif()
+
+# Additional warning suppressions for OpenCASCADE specifically
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    add_compile_options(
+        -Wno-deprecated-declarations
+        -Wno-unused-parameter
+        -Wno-sign-compare
+    )
+endif()
 
 # Find OpenCASCADE (OCE) packages
 set(OCE_INCLUDE_DIRS "/usr/include/oce")
@@ -27,7 +45,8 @@ set(OCE_LIBRARIES
 
 # Include directories
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
-include_directories(${OCE_INCLUDE_DIRS})
+# Include OpenCASCADE headers as system headers to suppress their warnings
+include_directories(SYSTEM ${OCE_INCLUDE_DIRS})
 
 # Collect all source files
 file(GLOB_RECURSE SOURCES "src/*.cpp")
@@ -39,6 +58,9 @@ add_library(semiconductor_device STATIC ${SOURCES} ${HEADERS})
 # Target properties
 target_include_directories(semiconductor_device PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+# Include OpenCASCADE headers as system headers to suppress their warnings
+target_include_directories(semiconductor_device SYSTEM PUBLIC
     ${OCE_INCLUDE_DIRS}
 )
 

@@ -1,136 +1,121 @@
-#include "SemiconductorDevice.h"
 #include "GeometryBuilder.h"
-#include "BoundaryMesh.h"
 
 #include <iostream>
-#include <memory>
 
 int main() {
     try {
-        std::cout << "=== Basic Shapes and Semiconductor Device Example ===" << std::endl;
+        std::cout << "=== Basic Geometric Shapes and Operations Example ===" << std::endl;
+        std::cout << "Demonstrating geometric primitives, boolean operations, and shape utilities" << std::endl;
         
         // Test basic geometry creation
         std::cout << "\n1. Creating basic geometric shapes..." << std::endl;
         
-        // Create a simple box
+        // Create a simple box (representing a silicon die)
+        double boxLength = 10e-3, boxWidth = 8e-3, boxHeight = 0.5e-3; // 10mm x 8mm x 0.5mm
         TopoDS_Solid box = GeometryBuilder::createBox(
             gp_Pnt(0, 0, 0), 
-            Dimensions3D(1.0, 0.5, 0.2)
+            Dimensions3D(boxLength, boxWidth, boxHeight)
         );
         
-        std::cout << "   ✓ Box created" << std::endl;
-        std::cout << "   Volume: " << GeometryBuilder::calculateVolume(box) << " m³" << std::endl;
+        std::cout << "   ✓ Silicon die (box) created: " 
+                  << boxLength*1e3 << "mm x " << boxWidth*1e3 << "mm x " << boxHeight*1e3 << "mm" << std::endl;
+        std::cout << "     Volume: " << GeometryBuilder::calculateVolume(box)*1e9 << " mm³" << std::endl;
         
-        // Create a cylinder
+        // Create a cylinder (representing a via or pillar)
+        double cylRadius = 50e-6, cylHeight = 100e-6; // 50 μm radius, 100 μm height
         TopoDS_Solid cylinder = GeometryBuilder::createCylinder(
-            gp_Pnt(2, 0, 0), 
+            gp_Pnt(5e-3, 4e-3, 0), // Center on the die
             gp_Vec(0, 0, 1), 
-            0.3, 0.5
+            cylRadius, cylHeight
         );
         
-        std::cout << "   ✓ Cylinder created" << std::endl;
-        std::cout << "   Volume: " << GeometryBuilder::calculateVolume(cylinder) << " m³" << std::endl;
+        std::cout << "   ✓ Through-silicon via (cylinder) created: radius " 
+                  << cylRadius*1e6 << " μm, height " << cylHeight*1e6 << " μm" << std::endl;
+        std::cout << "     Volume: " << GeometryBuilder::calculateVolume(cylinder)*1e12 << " μm³" << std::endl;
         
-        // Create a wafer
-        TopoDS_Solid wafer = GeometryBuilder::createCircularWafer(1.0, 0.1);
+        // Create a wafer (representing a silicon wafer)
+        double waferRadius = 100e-3, waferThickness = 0.75e-3; // 200mm diameter wafer, 0.75mm thick
+        TopoDS_Solid wafer = GeometryBuilder::createCircularWafer(waferRadius, waferThickness);
         
-        std::cout << "   ✓ Circular wafer created" << std::endl;
-        std::cout << "   Volume: " << GeometryBuilder::calculateVolume(wafer) << " m³" << std::endl;
+        std::cout << "   ✓ Silicon wafer created: diameter " 
+                  << waferRadius*2e3 << " mm, thickness " << waferThickness*1e3 << " mm" << std::endl;
+        std::cout << "     Volume: " << GeometryBuilder::calculateVolume(wafer)*1e6 << " cm³" << std::endl;
         
-        // Test boolean operations
-        std::cout << "\n2. Testing boolean operations..." << std::endl;
+        // Test boolean operations (semiconductor manufacturing context)
+        std::cout << "\n2. Testing boolean operations (semiconductor manufacturing contexts)..." << std::endl;
         
-        TopoDS_Solid box1 = GeometryBuilder::createBox(gp_Pnt(0, 0, 0), Dimensions3D(2, 2, 2));
-        TopoDS_Solid box2 = GeometryBuilder::createBox(gp_Pnt(1, 1, 1), Dimensions3D(2, 2, 2));
+        // Create a substrate and an etch region
+        TopoDS_Solid substrate = GeometryBuilder::createBox(gp_Pnt(0, 0, 0), Dimensions3D(200e-6, 200e-6, 50e-6));
+        TopoDS_Solid etchRegion = GeometryBuilder::createBox(gp_Pnt(75e-6, 75e-6, 10e-6), Dimensions3D(50e-6, 50e-6, 30e-6));
         
-        TopoDS_Shape unionResult = GeometryBuilder::unionShapes(box1, box2);
-        TopoDS_Shape intersectResult = GeometryBuilder::intersectShapes(box1, box2);
-        TopoDS_Shape subtractResult = GeometryBuilder::subtractShapes(box1, box2);
+        // Union: Combining multiple device layers
+        TopoDS_Solid layer1 = GeometryBuilder::createBox(gp_Pnt(0, 0, 0), Dimensions3D(100e-6, 100e-6, 10e-6));
+        TopoDS_Solid layer2 = GeometryBuilder::createBox(gp_Pnt(50e-6, 50e-6, 10e-6), Dimensions3D(100e-6, 100e-6, 10e-6));
+        TopoDS_Shape unionResult = GeometryBuilder::unionShapes(layer1, layer2);
+        double unionVolume = GeometryBuilder::calculateVolume(unionResult);
         
-        std::cout << "   ✓ Union operation completed" << std::endl;
-        std::cout << "   ✓ Intersection operation completed" << std::endl;
-        std::cout << "   ✓ Subtraction operation completed" << std::endl;
+        // Intersection: Finding overlap regions between layers
+        TopoDS_Shape intersectResult = GeometryBuilder::intersectShapes(layer1, layer2);
+        double intersectVolume = GeometryBuilder::calculateVolume(intersectResult);
         
-        // Test semiconductor device creation
-        std::cout << "\n3. Creating a simple semiconductor device..." << std::endl;
+        // Subtraction: Etching/patterning operations
+        TopoDS_Shape etchedSubstrate = GeometryBuilder::subtractShapes(substrate, etchRegion);
+        double etchedVolume = GeometryBuilder::calculateVolume(etchedSubstrate);
         
-        SemiconductorDevice device("SimpleDevice");
+        std::cout << "   ✓ Union (layer combination): " << unionVolume*1e15 << " μm³" << std::endl;
+        std::cout << "   ✓ Intersection (overlap region): " << intersectVolume*1e15 << " μm³" << std::endl;
+        std::cout << "   ✓ Subtraction (etched substrate): " << etchedVolume*1e15 << " μm³" << std::endl;
         
-        // Create materials
-        MaterialProperties silicon(MaterialType::Silicon, 1.0e-4, 11.7 * 8.854e-12, 1.12, "Silicon");
-        MaterialProperties oxide(MaterialType::Silicon_Dioxide, 1.0e-12, 3.9 * 8.854e-12, 9.0, "SiO2");
+        // Demonstrate geometric utility functions
+        std::cout << "\n3. Testing geometric utility functions..." << std::endl;
         
-        // Create substrate layer
-        TopoDS_Solid substrate = GeometryBuilder::createBox(
-            gp_Pnt(0, 0, 0),
-            Dimensions3D(2.0, 2.0, 0.5)
-        );
+        // Test bounding box calculation
+        auto bbox = GeometryBuilder::getBoundingBox(box);
+        std::cout << "   ✓ Silicon die bounding box:" << std::endl;
+        std::cout << "     Min: [" << bbox.first.X()*1e3 << ", " << bbox.first.Y()*1e3 << ", " << bbox.first.Z()*1e3 << "] mm" << std::endl;
+        std::cout << "     Max: [" << bbox.second.X()*1e3 << ", " << bbox.second.Y()*1e3 << ", " << bbox.second.Z()*1e3 << "] mm" << std::endl;
         
-        auto substrateLayer = std::make_unique<DeviceLayer>(
-            substrate, silicon, DeviceRegion::Substrate, "Substrate"
-        );
-        device.addLayer(std::move(substrateLayer));
+        // Test centroid calculation
+        gp_Pnt waferCentroid = GeometryBuilder::calculateCentroid(wafer);
+        std::cout << "   ✓ Wafer centroid: [" 
+                  << waferCentroid.X()*1e3 << ", " << waferCentroid.Y()*1e3 << ", " << waferCentroid.Z()*1e3 << "] mm" << std::endl;
         
-        // Create oxide layer
-        TopoDS_Solid oxideLayer = GeometryBuilder::createBox(
-            gp_Pnt(0.5, 0.5, 0.5),
-            Dimensions3D(1.0, 1.0, 0.1)
-        );
+        // Test shape validation
+        bool isBoxValid = GeometryBuilder::isValidShape(box);
+        bool isCylinderValid = GeometryBuilder::isValidShape(cylinder);
+        bool isWaferValid = GeometryBuilder::isValidShape(wafer);
         
-        auto oxideLayerPtr = std::make_unique<DeviceLayer>(
-            oxideLayer, oxide, DeviceRegion::Insulator, "Oxide"
-        );
-        device.addLayer(std::move(oxideLayerPtr));
+        std::cout << "   ✓ Shape validation:" << std::endl;
+        std::cout << "     Silicon die: " << (isBoxValid ? "Valid" : "Invalid") << std::endl;
+        std::cout << "     Via cylinder: " << (isCylinderValid ? "Valid" : "Invalid") << std::endl;
+        std::cout << "     Wafer: " << (isWaferValid ? "Valid" : "Invalid") << std::endl;
         
-        std::cout << "   ✓ Device layers created" << std::endl;
+        // Export basic shapes for visualization
+        std::cout << "\n4. Exporting geometric shapes..." << std::endl;
         
-        // Build device geometry
-        device.buildDeviceGeometry();
-        std::cout << "   ✓ Device geometry built" << std::endl;
+        bool boxExported = GeometryBuilder::exportSTEP(box, "silicon_die.step");
+        bool cylinderExported = GeometryBuilder::exportSTEP(cylinder, "via_cylinder.step");
+        bool waferExported = GeometryBuilder::exportSTEP(wafer, "silicon_wafer.step");
+        bool unionExported = GeometryBuilder::exportSTEP(unionResult, "union_layers.step");
+        bool etchedExported = GeometryBuilder::exportSTEP(etchedSubstrate, "etched_substrate.step");
         
-        // Print device information
-        device.printDeviceInfo();
+        std::cout << "   " << (boxExported ? "✓" : "✗") << " Silicon die exported: silicon_die.step" << std::endl;
+        std::cout << "   " << (cylinderExported ? "✓" : "✗") << " Via cylinder exported: via_cylinder.step" << std::endl;
+        std::cout << "   " << (waferExported ? "✓" : "✗") << " Wafer exported: silicon_wafer.step" << std::endl;
+        std::cout << "   " << (unionExported ? "✓" : "✗") << " Combined layers exported: union_layers.step" << std::endl;
+        std::cout << "   " << (etchedExported ? "✓" : "✗") << " Etched substrate exported: etched_substrate.step" << std::endl;
         
-        // Generate mesh
-        std::cout << "\n4. Generating mesh..." << std::endl;
-        device.generateGlobalBoundaryMesh(0.2);
+        std::cout << "\nFiles Created:" << std::endl;
+        std::cout << "  • silicon_die.step - Basic rectangular silicon die" << std::endl;
+        std::cout << "  • via_cylinder.step - Through-silicon via geometry" << std::endl;
+        std::cout << "  • silicon_wafer.step - Full wafer geometry" << std::endl;
+        std::cout << "  • union_layers.step - Result of layer combination" << std::endl;
+        std::cout << "  • etched_substrate.step - Substrate after etching" << std::endl;
         
-        DeviceLayer* substratePtr = device.getLayer("Substrate");
-        if (substratePtr) {
-            substratePtr->generateBoundaryMesh(0.3);
-        }
-        
-        DeviceLayer* oxidePtr = device.getLayer("Oxide");
-        if (oxidePtr) {
-            oxidePtr->generateBoundaryMesh(0.1);
-        }
-        
-        std::cout << "   ✓ Meshes generated" << std::endl;
-        
-        // Print updated information
-        device.printDeviceInfo();
-        
-        // Validation
-        std::cout << "\n5. Validation..." << std::endl;
-        if (device.validateGeometry()) {
-            std::cout << "   ✓ Geometry is valid" << std::endl;
-        } else {
-            std::cout << "   ✗ Geometry is invalid" << std::endl;
-        }
-        
-        if (device.validateMesh()) {
-            std::cout << "   ✓ Mesh is valid" << std::endl;
-        } else {
-            std::cout << "   ✗ Mesh is invalid" << std::endl;
-        }
-        
-        // Export
-        std::cout << "\n6. Exporting files..." << std::endl;
-        device.exportGeometry("simple_device.step", "STEP");
-        device.exportGeometry("simple_device.brep", "BREP");
-        device.exportMesh("simple_device.vtk", "VTK");
-        
-        std::cout << "   ✓ Files exported" << std::endl;
+        std::cout << "\nVisualization Tips:" << std::endl;
+        std::cout << "  - Open .step files in CAD software (FreeCAD, SolidWorks, etc.)" << std::endl;
+        std::cout << "  - Use these shapes as building blocks for more complex devices" << std::endl;
+        std::cout << "  - Boolean operations are fundamental in semiconductor fabrication modeling" << std::endl;
         
         std::cout << "\n=== Basic Shapes Example Completed Successfully ===" << std::endl;
         

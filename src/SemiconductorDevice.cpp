@@ -1,6 +1,7 @@
 #include "SemiconductorDevice.h"
-#include "BoundaryMesh.h"
 #include "GeometryBuilder.h"
+#include "VTKExporter.h"
+#include "BoundaryMesh.h"
 
 #include <iostream>
 #include <algorithm>
@@ -200,6 +201,19 @@ void SemiconductorDevice::exportMesh(const std::string& filename, const std::str
     }
 }
 
+void SemiconductorDevice::exportMeshWithRegions(const std::string& filename, const std::string& format) const {
+    std::string upperFormat = format;
+    std::transform(upperFormat.begin(), upperFormat.end(), upperFormat.begin(), ::toupper);
+    
+    if (upperFormat != "VTK") {
+        throw std::invalid_argument("Region export currently only supported for VTK format");
+    }
+    
+    if (!VTKExporter::exportDeviceWithRegions(*this, filename)) {
+        throw std::runtime_error("Failed to export device mesh with regions to " + filename);
+    }
+}
+
 std::vector<DeviceLayer*> SemiconductorDevice::getLayersByRegion(DeviceRegion region) {
     std::vector<DeviceLayer*> result;
     
@@ -303,4 +317,173 @@ std::map<MaterialType, double> SemiconductorDevice::getVolumesByMaterial() const
     }
     
     return volumes;
+}
+
+// Utility functions for export
+int SemiconductorDevice::getMaterialTypeId(MaterialType type) {
+    return static_cast<int>(type);
+}
+
+int SemiconductorDevice::getDeviceRegionId(DeviceRegion region) {
+    return static_cast<int>(region);
+}
+
+std::string SemiconductorDevice::getMaterialTypeName(MaterialType type) {
+    switch(type) {
+        case MaterialType::Silicon: return "Silicon";
+        case MaterialType::GermaniumSilicon: return "GermaniumSilicon";
+        case MaterialType::GalliumArsenide: return "GalliumArsenide";
+        case MaterialType::IndiumGalliumArsenide: return "IndiumGalliumArsenide";
+        case MaterialType::Silicon_Nitride: return "Silicon_Nitride";
+        case MaterialType::Silicon_Dioxide: return "Silicon_Dioxide";
+        case MaterialType::Metal_Contact: return "Metal_Contact";
+        default: return "Unknown";
+    }
+}
+
+std::string SemiconductorDevice::getDeviceRegionName(DeviceRegion region) {
+    switch(region) {
+        case DeviceRegion::Substrate: return "Substrate";
+        case DeviceRegion::ActiveRegion: return "ActiveRegion";
+        case DeviceRegion::Gate: return "Gate";
+        case DeviceRegion::Source: return "Source";
+        case DeviceRegion::Drain: return "Drain";
+        case DeviceRegion::Insulator: return "Insulator";
+        case DeviceRegion::Contact: return "Contact";
+        default: return "Unknown";
+    }
+}
+
+// Material factory methods
+MaterialProperties SemiconductorDevice::createStandardSilicon() {
+    return MaterialProperties(MaterialType::Silicon, 1.0e-4, 11.7 * 8.854e-12, 1.12, "Silicon Substrate");
+}
+
+MaterialProperties SemiconductorDevice::createStandardSiliconDioxide() {
+    return MaterialProperties(MaterialType::Silicon_Dioxide, 1.0e-16, 3.9 * 8.854e-12, 9.0, "SiO2 Gate Oxide");
+}
+
+MaterialProperties SemiconductorDevice::createStandardPolysilicon() {
+    return MaterialProperties(MaterialType::Metal_Contact, 1.0e5, 1.0 * 8.854e-12, 0.0, "Polysilicon Gate");
+}
+
+MaterialProperties SemiconductorDevice::createStandardMetal() {
+    return MaterialProperties(MaterialType::Metal_Contact, 1.0e7, 1.0 * 8.854e-12, 0.0, "Metal Contact");
+}
+
+// Device template methods
+void SemiconductorDevice::createSimpleMOSFET(double length, double width, double substrateHeight,
+                                            double oxideHeight, double gateHeight) {
+    // Clear existing layers
+    m_layers.clear();
+    
+    // Create standard materials
+    auto silicon = createStandardSilicon();
+    auto oxide = createStandardSiliconDioxide();
+    auto polysilicon = createStandardPolysilicon();
+    
+    // 1. Substrate layer (base of the device)
+    TopoDS_Solid substrate = GeometryBuilder::createBox(
+        gp_Pnt(0, 0, 0),
+        Dimensions3D(length, width, substrateHeight)
+    );
+    
+    auto substrateLayer = std::make_unique<DeviceLayer>(
+        substrate, silicon, DeviceRegion::Substrate, "Substrate"
+    );
+    addLayer(std::move(substrateLayer));
+    
+    // 2. Gate oxide layer (center portion on top of substrate)
+    TopoDS_Solid oxideBox = GeometryBuilder::createBox(
+        gp_Pnt(length*0.25, width*0.25, substrateHeight),
+        Dimensions3D(length*0.5, width*0.5, oxideHeight)
+    );
+    
+    auto oxideLayer = std::make_unique<DeviceLayer>(
+        oxideBox, oxide, DeviceRegion::Insulator, "Gate_Oxide"
+    );
+    addLayer(std::move(oxideLayer));
+    
+    // 3. Gate contact (smaller box on top of oxide)
+    TopoDS_Solid gateBox = GeometryBuilder::createBox(
+        gp_Pnt(length*0.3, width*0.3, substrateHeight + oxideHeight),
+        Dimensions3D(length*0.4, width*0.4, gateHeight)
+    );
+    
+    auto gateLayer = std::make_unique<DeviceLayer>(
+        gateBox, polysilicon, DeviceRegion::Gate, "Gate"
+    );
+    addLayer(std::move(gateLayer));
+    
+    // Build the device geometry
+    buildDeviceGeometry();
+}
+
+void SemiconductorDevice::generateAllLayerMeshes(double substrateMeshSize, double oxideMeshSize, double gateMeshSize) {
+    DeviceLayer* substrate = getLayer("Substrate");
+    if (substrate) {
+        substrate->generateBoundaryMesh(substrateMeshSize);
+    }
+    
+    DeviceLayer* oxide = getLayer("Gate_Oxide");
+    if (oxide) {
+        oxide->generateBoundaryMesh(oxideMeshSize);
+    }
+    
+    DeviceLayer* gate = getLayer("Gate");
+    if (gate) {
+        gate->generateBoundaryMesh(gateMeshSize);
+    }
+}
+
+void SemiconductorDevice::generateAllLayerMeshes() {
+    // Use reasonable default mesh sizes based on device dimensions
+    auto bbox = GeometryBuilder::getBoundingBox(m_deviceShape);
+    double deviceSize = std::max({
+        bbox.second.X() - bbox.first.X(),
+        bbox.second.Y() - bbox.first.Y(),
+        bbox.second.Z() - bbox.first.Z()
+    });
+    
+    double substrateMeshSize = deviceSize / 5.0;   // Coarse mesh
+    double oxideMeshSize = deviceSize / 20.0;      // Fine mesh
+    double gateMeshSize = deviceSize / 12.0;       // Medium mesh
+    
+    generateAllLayerMeshes(substrateMeshSize, oxideMeshSize, gateMeshSize);
+}
+
+// Validation and export workflow
+SemiconductorDevice::ValidationResult SemiconductorDevice::validateDevice() const {
+    ValidationResult result;
+    
+    result.geometryValid = validateGeometry();
+    result.geometryMessage = result.geometryValid ? 
+        "✓ Device geometry is valid" : "✗ Device geometry is invalid";
+    
+    result.meshValid = validateMesh();
+    result.meshMessage = result.meshValid ? 
+        "✓ Device mesh is valid" : "✗ Device mesh is invalid";
+    
+    return result;
+}
+
+void SemiconductorDevice::exportDeviceComplete(const std::string& baseName, bool includeRegions) const {
+    // Export geometry
+    exportGeometry(baseName + ".step", "STEP");
+    
+    // Export traditional mesh
+    exportMesh(baseName + "_traditional.vtk", "VTK");
+    
+    // Export enhanced mesh with regions if requested
+    if (includeRegions) {
+        exportMeshWithRegions(baseName + "_with_regions.vtk", "VTK");
+    }
+    
+    // Print summary
+    std::cout << "\nExported device files:" << std::endl;
+    std::cout << "  • " << baseName << ".step - 3D geometry (STEP format)" << std::endl;
+    std::cout << "  • " << baseName << "_traditional.vtk - Traditional mesh" << std::endl;
+    if (includeRegions) {
+        std::cout << "  • " << baseName << "_with_regions.vtk - Enhanced mesh with region data" << std::endl;
+    }
 }
