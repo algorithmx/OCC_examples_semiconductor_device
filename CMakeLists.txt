@@ -11,66 +11,29 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # Compiler flags
-set(CMAKE_CXX_FLAGS_DEBUG "-g -Wall -Wextra -Wno-unused-parameter")
+set(CMAKE_CXX_FLAGS_DEBUG "-g -Wall")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 
-# Suppress noisy warnings from system headers (OpenCASCADE)
-if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    add_compile_options(
-        -Wno-attributes
-        -Wno-unknown-pragmas
-        -Wno-extra  # Suppress extra warnings from system headers
-    )
-endif()
+## Simplified OCCT handling: always use system include paths and plain library names.
+# The following cache variables can be configured by the user or the build system:
+# - OCCT_INCLUDE_DIR: path to OpenCASCADE/OCCT headers (e.g. /usr/include/opencascade)
+# - OCCT_LIB_DIR: path to OCCT libraries (optional, used by find_library)
+# - OCCT_LIB_NAMES: semicolon-separated list of OCCT library basenames to link (defaults below)
 
-# Additional warning suppressions for OpenCASCADE specifically
-if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    add_compile_options(
-        -Wno-deprecated-declarations
-        -Wno-unused-parameter
-        -Wno-sign-compare
-    )
-endif()
+set(OCCT_INCLUDE_DIR "" CACHE PATH "Path to OCCT include directory (system headers)")
+set(OCCT_LIB_DIR "" CACHE PATH "Optional path to OCCT libraries (used by find_library)")
+set(OCCT_LIB_NAMES "TKBRep;TKGeomAlgo;TKTopAlgo;TKPrim;TKMath;TKG2d;TKG3d;TKGeomBase;TKernel;TKService;TKShHealing;TKBool;TKOffset;TKSTL;TKSTEP;TKSTEPBase;TKIGES;TKXmlL;TKBinL;TKCAF;TKMesh" CACHE STRING "OCCT library basenames to link")
 
-# Find OpenCASCADE / OCCT (libocct) packages using CMake's FindPackage
-# Prefer OCCT CMake config if available
-find_package(OCCT CONFIG)
-
-# OCCT provides imported targets when installed with CMake config files.
-# If not available, we'll fall back to using system include paths and common library names.
-set(OCCT_FALLBACK_INCLUDE_DIR "")
-if(NOT OCCT_FOUND)
-    message(STATUS "OCCT package config not found via find_package(OCCT). Falling back to system include paths and library names.")
+# If user did not set OCCT_INCLUDE_DIR, try common system locations.
+if(NOT OCCT_INCLUDE_DIR)
     if(EXISTS "/usr/include/opencascade")
-        set(OCCT_FALLBACK_INCLUDE_DIR "/usr/include/opencascade")
+        set(OCCT_INCLUDE_DIR "/usr/include/opencascade")
     elseif(EXISTS "/usr/include/occt")
-        set(OCCT_FALLBACK_INCLUDE_DIR "/usr/include/occt")
+        set(OCCT_INCLUDE_DIR "/usr/include/occt")
     endif()
 endif()
-set(OCCT_COMPONENTS
-    Foundation
-    Math
-    TKernel
-    TKGeomBase
-    TKG2d
-    TKG3d
-    TKGeomAlgo
-    TKBRep
-    TKTopAlgo
-    TKPrim
-    TKMesh
-    TKShHealing
-    TKBool
-    TKOffset
-    TKService
-    TKSTL
-    TKSTEP
-    TKIGES
-    TKSTEPBase
-    TKXmlL
-    TKBinL
-    TKCAF
-)
+
+# Include directories are set per-target below (use target_include_directories on targets)
 
 # Include directories
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -91,68 +54,31 @@ target_include_directories(semiconductor_device PUBLIC
 # Include OpenCASCADE headers as system headers to suppress their warnings
 # No need to add raw include dirs; link the OCCT targets below which carry include dirs.
 
-# Link libraries
-# Link against OCCT targets. If the package provides imported targets, prefer them.
-foreach(comp IN LISTS OCCT_COMPONENTS)
-    string(TOUPPER "${comp}" COMP_UPPER)
-    # Try to link the corresponding libocct target if available
-    if(TARGET OCCT::${comp})
-        target_link_libraries(semiconductor_device PUBLIC OCCT::${comp})
+# Link libraries: use system include dir and find OCCT libs by basename.
+if(OCCT_INCLUDE_DIR)
+    target_include_directories(semiconductor_device SYSTEM PUBLIC ${OCCT_INCLUDE_DIR})
+endif()
+
+# Resolve OCCT libraries listed in OCCT_LIB_NAMES using OCCT_LIB_DIR (if provided)
+set(OCCT_LIBS "")
+foreach(_lib ${OCCT_LIB_NAMES})
+    # try common name first (lib<name>.so) in OCCT_LIB_DIR then system paths
+    if(OCCT_LIB_DIR)
+        find_library(_found_${_lib} NAMES ${_lib} lib${_lib} PATHS ${OCCT_LIB_DIR} NO_DEFAULT_PATH)
+    else()
+        find_library(_found_${_lib} NAMES ${_lib} lib${_lib} PATHS /usr/lib /usr/lib/x86_64-linux-gnu /usr/local/lib /lib)
+    endif()
+
+    if(_found_${_lib})
+        list(APPEND OCCT_LIBS ${_found_${_lib}})
+    else()
+        # fall back to bare name so linker may resolve it in default system paths
+        list(APPEND OCCT_LIBS ${_lib})
     endif()
 endforeach()
 
-# Fallback: if OCCT package config wasn't found, add include dir and link common libocct libraries
-if(NOT OCCT_FOUND)
-    if(OCCT_FALLBACK_INCLUDE_DIR)
-        target_include_directories(semiconductor_device SYSTEM PUBLIC ${OCCT_FALLBACK_INCLUDE_DIR})
-    endif()
-
-    # Robust fallback: try to locate each OCCT library individually in common lib paths.
-    set(_occt_lib_names
-        TKBRep
-        TKGeomAlgo
-        TKTopAlgo
-        TKPrim
-        TKMath
-        TKG2d
-        TKG3d
-        TKGeomBase
-        TKernel
-        TKService
-        TKShHealing
-        TKBool
-        TKOffset
-        TKSTL
-        TKSTEP
-        TKSTEPBase
-        TKIGES
-        TKXmlL
-        TKBinL
-        TKCAF
-        TKMesh
-    )
-
-    set(OCCT_LIBS "")
-    foreach(_lib ${_occt_lib_names})
-        find_library(_found_${_lib} NAMES ${_lib} lib${_lib} PATHS /usr/lib /usr/lib/x86_64-linux-gnu /usr/local/lib /lib NO_DEFAULT_PATH)
-        if(_found_${_lib})
-            list(APPEND OCCT_LIBS ${_found_${_lib}})
-        else()
-            # If not found by full path, append bare name so the linker may still find it in default paths
-            list(APPEND OCCT_LIBS ${_lib})
-        endif()
-    endforeach()
-
-    message(STATUS "OCCT fallback link list: ${OCCT_LIBS}")
-    # Create an INTERFACE target to carry OCCT link and include flags to consumers
-    add_library(occt_fallback INTERFACE)
-    target_link_libraries(occt_fallback INTERFACE ${OCCT_LIBS})
-    if(OCCT_FALLBACK_INCLUDE_DIR)
-        target_include_directories(occt_fallback INTERFACE ${OCCT_FALLBACK_INCLUDE_DIR})
-    endif()
-
-    # Link the main library against the occt_fallback so executables linking it inherit the OCCT libs
-    target_link_libraries(semiconductor_device PUBLIC occt_fallback)
+if(OCCT_LIBS)
+    target_link_libraries(semiconductor_device PUBLIC ${OCCT_LIBS})
 endif()
 
 # Add examples subdirectory
