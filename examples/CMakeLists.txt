@@ -39,3 +39,11 @@ target_link_libraries(trapezoid_nurbs_example semiconductor_device)
 # Realistic MOSFET with NURBS gate profile example
 add_executable(realistic_gate_profile_example realistic_gate_profile_example.cpp)
 target_link_libraries(realistic_gate_profile_example semiconductor_device)
+
+# Extrusion-based MOSFET example: split source-drain bar using gate footprint
+add_executable(extrusion_split_mosfet_example extrusion_split_mosfet_example.cpp)
+target_link_libraries(extrusion_split_mosfet_example semiconductor_device)
+
+# FinFET extrusion example
+add_executable(finfet_extrusion_example finfet_extrusion_example.cpp)
+target_link_libraries(finfet_extrusion_example semiconductor_device)

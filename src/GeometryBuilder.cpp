@@ -35,6 +35,9 @@
 #include <STEPControl_StepModelType.hxx>
 #include <Geom_BezierCurve.hxx>
 #include <TColgp_Array1OfPnt.hxx>
+#include <ShapeFix_Shape.hxx>
+#include <BRepLib.hxx>
+#include <Standard_Failure.hxx>
 
 // Basic primitive creation
 TopoDS_Solid GeometryBuilder::createBox(const gp_Pnt& corner, const Dimensions3D& dimensions) {
@@ -213,71 +216,128 @@ TopoDS_Solid GeometryBuilder::extrudeProfile(const Profile2D& profile, const gp_
     if (profile.points.size() < 3) {
         throw std::invalid_argument("Profile must have at least 3 points");
     }
-    
-    // Create wire from profile points
-    BRepBuilderAPI_MakeWire wireMaker;
-    
-    for (size_t i = 0; i < profile.points.size(); i++) {
-        size_t next = (i + 1) % profile.points.size();
-        if (!profile.closed && next == 0) break;
-        
-        BRepBuilderAPI_MakeEdge edgeMaker(profile.points[i], profile.points[next]);
-        wireMaker.Add(edgeMaker.Edge());
+
+    try {
+        // Create wire from profile points
+        BRepBuilderAPI_MakeWire wireMaker;
+
+        for (size_t i = 0; i < profile.points.size(); i++) {
+            size_t next = (i + 1) % profile.points.size();
+            if (!profile.closed && next == 0) break;
+
+            BRepBuilderAPI_MakeEdge edgeMaker(profile.points[i], profile.points[next]);
+            wireMaker.Add(edgeMaker.Edge());
+        }
+
+        if (!wireMaker.IsDone()) {
+            throw std::runtime_error("Failed to create profile wire");
+        }
+
+        // Create face from wire
+        BRepBuilderAPI_MakeFace faceMaker(wireMaker.Wire());
+        if (!faceMaker.IsDone()) {
+            throw std::runtime_error("Failed to create profile face");
+        }
+
+        // Extrude the face
+        BRepPrimAPI_MakePrism prismMaker(faceMaker.Face(), direction);
+        if (!prismMaker.IsDone()) {
+            throw std::runtime_error("Failed to extrude profile");
+        }
+
+        // Safely extract a solid from the result shape
+        TopoDS_Shape extruded = prismMaker.Shape();
+        if (extruded.ShapeType() == TopAbs_SOLID) {
+            return TopoDS::Solid(extruded);
+        }
+        // If it's a compound or something else, extract the first solid
+        TopExp_Explorer exp(extruded, TopAbs_SOLID);
+        if (exp.More()) {
+            return TopoDS::Solid(exp.Current());
+        }
+        throw std::runtime_error("Extrusion did not produce a solid");
+    } catch (...) {
+        // Convert any OCC exception to std::runtime_error to avoid abort
+        throw std::runtime_error("OpenCASCADE error during extrudeProfile");
     }
-    
-    if (!wireMaker.IsDone()) {
-        throw std::runtime_error("Failed to create profile wire");
-    }
-    
-    // Create face from wire
-    BRepBuilderAPI_MakeFace faceMaker(wireMaker.Wire());
-    if (!faceMaker.IsDone()) {
-        throw std::runtime_error("Failed to create profile face");
-    }
-    
-    // Extrude the face
-    BRepPrimAPI_MakePrism prismMaker(faceMaker.Face(), direction);
-    if (!prismMaker.IsDone()) {
-        throw std::runtime_error("Failed to extrude profile");
-    }
-    
-    TopoDS_Solid result;
-    result = TopoDS::Solid(prismMaker.Shape());
-    return result;
 }
 
 // Boolean operations
 TopoDS_Shape GeometryBuilder::unionShapes(const TopoDS_Shape& shape1, const TopoDS_Shape& shape2) {
-    BRepAlgoAPI_Fuse fuseMaker(shape1, shape2);
-    fuseMaker.Build();
-    
-    if (!fuseMaker.IsDone()) {
-        throw std::runtime_error("Failed to perform union operation");
+    try {
+        BRepAlgoAPI_Fuse fuseMaker(shape1, shape2);
+        fuseMaker.SetFuzzyValue(5e-9);
+        fuseMaker.SetNonDestructive(true);
+        fuseMaker.SetRunParallel(true);
+        fuseMaker.Build();
+
+        if (!fuseMaker.IsDone()) {
+            throw std::runtime_error("Failed to perform union operation");
+        }
+
+        return fuseMaker.Shape();
+    } catch (const Standard_Failure& e) {
+        const char* msg = e.GetMessageString();
+        throw std::runtime_error(std::string("OpenCASCADE error during union (fuse): ") + (msg ? msg : "<no message>"));
+    } catch (...) {
+        throw std::runtime_error("OpenCASCADE error during union (fuse)");
     }
-    
-    return fuseMaker.Shape();
 }
 
 TopoDS_Shape GeometryBuilder::intersectShapes(const TopoDS_Shape& shape1, const TopoDS_Shape& shape2) {
-    BRepAlgoAPI_Common commonMaker(shape1, shape2);
-    commonMaker.Build();
-    
-    if (!commonMaker.IsDone()) {
-        throw std::runtime_error("Failed to perform intersection operation");
+    try {
+        BRepAlgoAPI_Common commonMaker(shape1, shape2);
+        commonMaker.SetFuzzyValue(5e-9);
+        commonMaker.SetNonDestructive(true);
+        commonMaker.SetRunParallel(true);
+        commonMaker.Build();
+
+        if (!commonMaker.IsDone()) {
+            throw std::runtime_error("Failed to perform intersection operation");
+        }
+
+        return commonMaker.Shape();
+    } catch (const Standard_Failure& e) {
+        const char* msg = e.GetMessageString();
+        throw std::runtime_error(std::string("OpenCASCADE error during intersection (common): ") + (msg ? msg : "<no message>"));
+    } catch (...) {
+        throw std::runtime_error("OpenCASCADE error during intersection (common)");
     }
-    
-    return commonMaker.Shape();
 }
 
 TopoDS_Shape GeometryBuilder::subtractShapes(const TopoDS_Shape& shape1, const TopoDS_Shape& shape2) {
-    BRepAlgoAPI_Cut cutMaker(shape1, shape2);
-    cutMaker.Build();
-    
-    if (!cutMaker.IsDone()) {
-        throw std::runtime_error("Failed to perform subtraction operation");
+    try {
+        // First attempt
+        {
+            BRepAlgoAPI_Cut cutMaker(shape1, shape2);
+            cutMaker.SetFuzzyValue(5e-9); // 5 nm
+            cutMaker.SetNonDestructive(true);
+            cutMaker.SetRunParallel(true);
+            cutMaker.Build();
+            if (cutMaker.IsDone()) {
+                return cutMaker.Shape();
+            }
+        }
+        // Retry with larger fuzzy and pre-repaired inputs
+        {
+            TopoDS_Shape s1 = repairShape(shape1);
+            TopoDS_Shape s2 = repairShape(shape2);
+            BRepAlgoAPI_Cut cutMaker2(s1, s2);
+            cutMaker2.SetFuzzyValue(5e-8); // 50 nm
+            cutMaker2.SetNonDestructive(true);
+            cutMaker2.SetRunParallel(true);
+            cutMaker2.Build();
+            if (cutMaker2.IsDone()) {
+                return cutMaker2.Shape();
+            }
+            throw std::runtime_error("Failed to perform subtraction operation (after retry)");
+        }
+    } catch (const Standard_Failure& e) {
+        const char* msg = e.GetMessageString();
+        throw std::runtime_error(std::string("OpenCASCADE error during subtraction (cut): ") + (msg ? msg : "<no message>"));
+    } catch (...) {
+        throw std::runtime_error("OpenCASCADE error during subtraction (cut)");
     }
-    
-    return cutMaker.Shape();
 }
 
 // Semiconductor-specific geometries
@@ -423,7 +483,43 @@ std::pair<gp_Pnt, gp_Pnt> GeometryBuilder::getBoundingBox(const TopoDS_Shape& sh
 
 // Shape validation and repair
 bool GeometryBuilder::isValidShape(const TopoDS_Shape& shape) {
-    return !shape.IsNull() && BRepCheck_Analyzer(shape).IsValid();
+    try {
+        if (shape.IsNull()) return false;
+        BRepCheck_Analyzer analyzer(shape);
+        return analyzer.IsValid();
+    } catch (const Standard_Failure&) {
+        return false;
+    } catch (...) {
+        return false;
+    }
+}
+
+TopoDS_Shape GeometryBuilder::repairShape(const TopoDS_Shape& shape) {
+    try {
+        if (shape.IsNull()) return shape;
+        Handle(ShapeFix_Shape) fixer = new ShapeFix_Shape(shape);
+        fixer->SetPrecision(1e-9);
+        fixer->SetMinTolerance(1e-9);
+        fixer->SetMaxTolerance(1e-3);
+        fixer->Perform();
+        TopoDS_Shape fixed = fixer->Shape();
+        // Enforce SameParameter to tidy up edge/curve consistency
+        BRepLib::SameParameter(fixed, 1e-9, true);
+        return fixed;
+    } catch (...) {
+        return shape;
+    }
+}
+
+TopoDS_Shape GeometryBuilder::simplifyShape(const TopoDS_Shape& shape, double tolerance) {
+    try {
+        if (shape.IsNull()) return shape;
+        TopoDS_Shape simplified = shape;
+        BRepLib::SameParameter(simplified, tolerance, true);
+        return simplified;
+    } catch (...) {
+        return shape;
+    }
 }
 
 // Export utilities

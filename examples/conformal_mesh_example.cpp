@@ -40,7 +40,7 @@ void createAdvancedMOSFETDevice(SemiconductorDevice& device) {
     const double substrateHeight = 0.5e-3;  // 0.5 mm
     const double oxideHeight = 0.05e-3;     // 0.05 mm
     const double gateHeight = 0.2e-3;       // 0.2 mm
-    const double contactHeight = 0.1e-3;    // 0.1 mm
+    // const double contactHeight = 0.1e-3;    // 0.1 mm
     
     // 1. Substrate layer (base silicon)
     TopoDS_Solid substrate = GeometryBuilder::createBox(
