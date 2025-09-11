@@ -33,6 +33,8 @@
 #include <BRepCheck_Analyzer.hxx>
 #include <IFSelect_ReturnStatus.hxx>
 #include <STEPControl_StepModelType.hxx>
+#include <Geom_BezierCurve.hxx>
+#include <TColgp_Array1OfPnt.hxx>
 
 // Basic primitive creation
 TopoDS_Solid GeometryBuilder::createBox(const gp_Pnt& corner, const Dimensions3D& dimensions) {
@@ -101,6 +103,109 @@ TopoDS_Solid GeometryBuilder::createRectangularWafer(double length, double width
 
 TopoDS_Solid GeometryBuilder::createCircularWafer(double radius, double thickness) {
     return createCylinder(gp_Pnt(0, 0, 0), gp_Vec(0, 0, 1), radius, thickness);
+}
+
+// Trapezoid with NURBS (Bezier) shoulder profile extruded along +Y
+TopoDS_Solid GeometryBuilder::createTrapezoidWithNURBSShoulders(
+    const gp_Pnt& origin,
+    double bottomWidth,
+    double topWidth,
+    double height,
+    double depth,
+    double shoulderRadius,
+    double shoulderSharpness)
+{
+    if (bottomWidth <= 0 || topWidth <= 0 || height <= 0 || depth <= 0) {
+        throw std::invalid_argument("createTrapezoidWithNURBSShoulders: dimensions must be positive");
+    }
+    if (shoulderRadius < 0) shoulderRadius = 0;
+    if (shoulderSharpness < 0) shoulderSharpness = 0;
+    if (shoulderSharpness > 1.0) shoulderSharpness = 1.0;
+
+    // Build 2D profile in local X-Z plane at Y=0, then extrude along +Y by depth.
+    // Center the top width above the bottom center.
+    const double xCenter = bottomWidth * 0.5;
+    const double topLeftX = xCenter - topWidth * 0.5;
+    const double topRightX = xCenter + topWidth * 0.5;
+
+    // Key profile points (local coordinates, Y=0)
+    gp_Pnt pBL(0.0, 0.0, 0.0);                 // Bottom Left
+    gp_Pnt pBR(bottomWidth, 0.0, 0.0);         // Bottom Right
+    gp_Pnt pTR(topRightX, 0.0, height);        // Top Right
+    gp_Pnt pTL(topLeftX, 0.0, height);         // Top Left
+
+    // If shoulderRadius is zero, build a linear trapezoid
+    if (shoulderRadius <= 1e-15) {
+        BRepBuilderAPI_MakeWire w;
+        w.Add(BRepBuilderAPI_MakeEdge(pBL, pBR));
+        w.Add(BRepBuilderAPI_MakeEdge(pBR, pTR));
+        w.Add(BRepBuilderAPI_MakeEdge(pTR, pTL));
+        w.Add(BRepBuilderAPI_MakeEdge(pTL, pBL));
+        BRepBuilderAPI_MakeFace f(w.Wire());
+        if (!f.IsDone()) throw std::runtime_error("Failed to make trapezoid face");
+        BRepPrimAPI_MakePrism prism(f.Face(), gp_Vec(0, depth, 0));
+        if (!prism.IsDone()) throw std::runtime_error("Failed to extrude trapezoid prism");
+        TopoDS_Shape solidShape = prism.Shape();
+        // Translate to origin
+        gp_Trsf tr;
+        tr.SetTranslation(gp_Vec(origin.X(), origin.Y(), origin.Z()));
+        return TopoDS::Solid(BRepBuilderAPI_Transform(solidShape, tr).Shape());
+    }
+
+    // Build Bezier (cubic) curves for shoulders
+    const double r = std::min(shoulderRadius, std::min(height, bottomWidth) * 0.5);
+    const double s = shoulderSharpness;
+
+    // Right shoulder: pBR -> pTR with inward curvature
+    TColgp_Array1OfPnt rightPoles(1, 4);
+    rightPoles.SetValue(1, pBR);
+    rightPoles.SetValue(4, pTR);
+    // Control points: move inward (towards center) and upward from bottom,
+    // and slightly outward from top going down to shape the shoulder.
+    gp_Pnt rP1(std::max(pBR.X() - r * (1.0 + s), xCenter), 0.0, std::min(r, height * 0.5));
+    gp_Pnt rP2(std::min(pTR.X() + r * (0.25 * s), bottomWidth), 0.0, std::max(height - r, height * 0.5));
+    rightPoles.SetValue(2, rP1);
+    rightPoles.SetValue(3, rP2);
+    Handle(Geom_BezierCurve) rightCurve = new Geom_BezierCurve(rightPoles);
+
+    // Left shoulder: pTL -> pBL (note reversed to keep wire orientation consistent)
+    TColgp_Array1OfPnt leftPoles(1, 4);
+    leftPoles.SetValue(1, pTL);
+    leftPoles.SetValue(4, pBL);
+    gp_Pnt lP1(std::max(pTL.X() - r * (0.25 * s), 0.0), 0.0, std::max(height - r, height * 0.5));
+    gp_Pnt lP2(std::min(pBL.X() + r * (1.0 + s), xCenter), 0.0, std::min(r, height * 0.5));
+    leftPoles.SetValue(2, lP1);
+    leftPoles.SetValue(3, lP2);
+    Handle(Geom_BezierCurve) leftCurve = new Geom_BezierCurve(leftPoles);
+
+    // Edges: bottom, right shoulder (Bezier), top, left shoulder (Bezier)
+    BRepBuilderAPI_MakeWire w;
+    TopoDS_Edge eBottom = BRepBuilderAPI_MakeEdge(pBL, pBR);
+    TopoDS_Edge eRight = BRepBuilderAPI_MakeEdge(rightCurve);
+    TopoDS_Edge eTop = BRepBuilderAPI_MakeEdge(pTR, pTL);
+    TopoDS_Edge eLeft = BRepBuilderAPI_MakeEdge(leftCurve);
+
+    w.Add(eBottom);
+    w.Add(eRight);
+    w.Add(eTop);
+    w.Add(eLeft);
+
+    if (!w.IsDone()) throw std::runtime_error("Failed to build trapezoid NURBS wire");
+
+    BRepBuilderAPI_MakeFace f(w.Wire());
+    if (!f.IsDone()) throw std::runtime_error("Failed to make trapezoid NURBS face");
+
+    BRepPrimAPI_MakePrism prism(f.Face(), gp_Vec(0, depth, 0));
+    if (!prism.IsDone()) throw std::runtime_error("Failed to extrude trapezoid NURBS prism");
+
+    TopoDS_Shape solidShape = prism.Shape();
+
+    // Translate to origin
+    gp_Trsf tr;
+    tr.SetTranslation(gp_Vec(origin.X(), origin.Y(), origin.Z()));
+    TopoDS_Shape moved = BRepBuilderAPI_Transform(solidShape, tr).Shape();
+
+    return TopoDS::Solid(moved);
 }
 
 // Extrusion operations

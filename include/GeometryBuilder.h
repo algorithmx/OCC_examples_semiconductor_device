@@ -64,6 +64,24 @@ public:
     static TopoDS_Solid createCircularWafer(double radius, double thickness);
     static TopoDS_Solid createFinFET(double finWidth, double finHeight, double finLength, 
                                     double gateLength, double sourceLength, double drainLength);
+
+    // Custom advanced profiles
+    // Creates a trapezoidal prism whose left/right shoulders are NURBS (Bezier) curves.
+    // origin: base corner of the prism (min X, min Y, min Z of the extruded solid)
+    // bottomWidth: width at Z=origin.Z()
+    // topWidth: width at Z=origin.Z()+height
+    // height: vertical extent along +Z
+    // depth: extrusion distance along +Y
+    // shoulderRadius: curvature control (in meters). 0 -> linear shoulders.
+    // shoulderSharpness: 0..1, controls how quickly the shoulder turns inward (default 0.5)
+    static TopoDS_Solid createTrapezoidWithNURBSShoulders(
+        const gp_Pnt& origin,
+        double bottomWidth,
+        double topWidth,
+        double height,
+        double depth,
+        double shoulderRadius,
+        double shoulderSharpness = 0.5);
     
     // Extrusion and sweep operations
     static TopoDS_Solid extrudeProfile(const Profile2D& profile, const gp_Vec& direction);

@@ -27,3 +27,15 @@ target_link_libraries(ultra_fine_mesh_example semiconductor_device)
 # Advanced mesh refinement with OpenCASCADE built-in capabilities
 add_executable(advanced_mesh_refinement_example advanced_mesh_refinement_example.cpp)
 target_link_libraries(advanced_mesh_refinement_example semiconductor_device)
+
+# Simplified MOSFET example with minimal output and single VTK file
+add_executable(simple_mosfet_example simple_mosfet_example.cpp)
+target_link_libraries(simple_mosfet_example semiconductor_device)
+
+# Trapezoid with NURBS shoulders geometry example
+add_executable(trapezoid_nurbs_example trapezoid_nurbs_example.cpp)
+target_link_libraries(trapezoid_nurbs_example semiconductor_device)
+
+# Realistic MOSFET with NURBS gate profile example
+add_executable(realistic_gate_profile_example realistic_gate_profile_example.cpp)
+target_link_libraries(realistic_gate_profile_example semiconductor_device)
