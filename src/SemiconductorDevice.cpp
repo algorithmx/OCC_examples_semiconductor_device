@@ -1,4 +1,5 @@
 #include "SemiconductorDevice.h"
+#include "BoundaryMesh.h"
 #include "GeometryBuilder.h"
 #include "VTKExporter.h"
 #include "BoundaryMesh.h"
@@ -21,6 +22,15 @@ MaterialProperties::MaterialProperties(MaterialType t, double cond, double perm,
                                       double gap, const std::string& n)
     : type(t), conductivity(cond), permittivity(perm), bandGap(gap), name(n) {
 }
+
+SemiconductorDevice::~SemiconductorDevice() = default;
+
+// Define DeviceLayer destructor out-of-line so BoundaryMesh is a complete type here.
+DeviceLayer::~DeviceLayer() = default;
+
+// Allow SemiconductorDevice to be movable (default move operations).
+SemiconductorDevice::SemiconductorDevice(SemiconductorDevice&&) noexcept = default;
+SemiconductorDevice& SemiconductorDevice::operator=(SemiconductorDevice&&) noexcept = default;
 
 // DeviceLayer implementation
 DeviceLayer::DeviceLayer(const TopoDS_Solid& solid, const MaterialProperties& material,

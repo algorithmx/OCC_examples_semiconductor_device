@@ -37,12 +37,13 @@ check_dependencies() {
         exit 1
     fi
     
-    # Check if OpenCASCADE libraries are available
-    if [ ! -d "/usr/lib/x86_64-linux-gnu/oce-0.17" ] || [ ! -d "/usr/include/oce" ]; then
-        print_error "OpenCASCADE (OCE) libraries not found."
-        print_error "Please install OCE development packages:"
-        print_error "  sudo apt install liboce-foundation-dev liboce-modeling-dev liboce-ocaf-dev liboce-visualization-dev"
-        exit 1
+    # Check if OpenCASCADE/OCCT (libocct) headers are present in common system paths
+    if [ ! -d "/usr/include/opencascade" ] && [ ! -d "/usr/include/occt" ] && [ ! -d "/usr/include/OCCT" ]; then
+        print_warning "OpenCASCADE/OCCT (libocct) headers not found in common include paths."
+        print_warning "CMake will still attempt to find OCCT libraries on the system; if you see link errors, install OCCT dev packages:" 
+        print_warning "  sudo apt update"
+        print_warning "  sudo apt install libocct-foundation-dev libocct-modeling-data-dev libocct-modeling-algorithms-dev libocct-ocaf-dev libocct-visualization-dev"
+        print_warning "Optional helpful packages: libocct-data-exchange-dev libocct-draw-dev"
     fi
     
     print_status "All dependencies found."
@@ -69,15 +70,15 @@ build_project() {
     mkdir -p "$BUILD_DIR"
     cd "$BUILD_DIR"
     
-    # Configure with CMake
+    # Configure with CMake (use absolute path to project root to avoid cwd issues)
     print_status "Configuring with CMake..."
     cmake -DCMAKE_BUILD_TYPE="$build_type" \
-          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-          "$PROJECT_ROOT"
-    
-    # Build the project
-    print_status "Building..."
-    make -j$(nproc)
+        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+        "$PROJECT_ROOT"
+
+    # Build the project using CMake --build so generators are respected
+    print_status "Building (parallel jobs=$(nproc))..."
+    cmake --build . -- -j$(nproc)
     
     print_status "Build completed successfully!"
 }

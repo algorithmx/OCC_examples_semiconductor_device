@@ -1,7 +1,8 @@
 #ifndef OPENCASCADE_HEADERS_H
 #define OPENCASCADE_HEADERS_H
+#define OPENCASCADE_HEADERS_H
 
-// This header wraps OpenCASCADE includes with warning suppressions
+// This header wraps OpenCASCADE (OCCT) includes with warning suppressions
 // to reduce compilation noise from system headers
 
 #pragma GCC diagnostic push
@@ -10,7 +11,7 @@
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #pragma GCC diagnostic ignored "-Wsign-compare"
 
-// OpenCASCADE includes
+// OpenCASCADE (OCCT) includes
 #include <TopoDS_Shape.hxx>
 #include <TopoDS_Solid.hxx>
 #include <TopoDS_Face.hxx>

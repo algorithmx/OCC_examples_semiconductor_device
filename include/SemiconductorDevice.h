@@ -76,6 +76,7 @@ public:
                 const MaterialProperties& material,
                 DeviceRegion region,
                 const std::string& name);
+    ~DeviceLayer();
     
     // Getters
     const TopoDS_Solid& getSolid() const { return m_solid; }
@@ -115,7 +116,10 @@ private:
 
 public:
     explicit SemiconductorDevice(const std::string& name = "SemiconductorDevice");
-    virtual ~SemiconductorDevice() = default;
+    ~SemiconductorDevice();
+    // Movable but not copyable (unique_ptr members)
+    SemiconductorDevice(SemiconductorDevice&&) noexcept;
+    SemiconductorDevice& operator=(SemiconductorDevice&&) noexcept;
     
     // Layer management
     void addLayer(std::unique_ptr<DeviceLayer> layer);
