@@ -1,6 +1,8 @@
 // DependencyGraph.h
 #pragma once
 
+#include <cstddef>
+
 #include <vector>
 #include <set>
 

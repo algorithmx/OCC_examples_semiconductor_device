@@ -89,47 +89,40 @@ void BoundaryMesh::extractMeshData() {
             continue;
         }
         
-        // Extract nodes using MapNodeArray() (handles prefered in OCCT)
-        Handle(TColgp_HArray1OfPnt) nodeArray = triangulation->MapNodeArray();
-        if (!nodeArray.IsNull()) {
-            for (int i = nodeArray->Lower(); i <= nodeArray->Upper(); ++i) {
-                gp_Pnt point = nodeArray->Value(i);
-                if (!location.IsIdentity()) {
-                    point.Transform(location.Transformation());
-                }
-
-                auto meshNode = std::make_unique<MeshNode>(point, nodeOffset + i - nodeArray->Lower());
-                m_nodes.push_back(std::move(meshNode));
+        // Extract nodes using modern OCCT 7.5+ API - direct array access
+        const TColgp_Array1OfPnt& nodes = triangulation->Nodes();
+        for (int i = nodes.Lower(); i <= nodes.Upper(); ++i) {
+            gp_Pnt point = nodes.Value(i);
+            if (!location.IsIdentity()) {
+                point.Transform(location.Transformation());
             }
+
+            auto meshNode = std::make_unique<MeshNode>(point, nodeOffset + i - nodes.Lower());
+            m_nodes.push_back(std::move(meshNode));
         }
 
-        // Extract triangles using MapTriangleArray()
-        Handle(Poly_HArray1OfTriangle) triArray = triangulation->MapTriangleArray();
-        if (!triArray.IsNull()) {
-            for (int i = triArray->Lower(); i <= triArray->Upper(); ++i) {
-                const Poly_Triangle& triangle = triArray->Value(i);
-                int n1, n2, n3;
-                triangle.Get(n1, n2, n3);
+        // Extract triangles using modern OCCT 7.5+ API - direct array access
+        const Poly_Array1OfTriangle& triangles = triangulation->Triangles();
+        for (int i = triangles.Lower(); i <= triangles.Upper(); ++i) {
+            const Poly_Triangle& triangle = triangles.Value(i);
+            int n1, n2, n3;
+            triangle.Get(n1, n2, n3);
 
-                // Adjust indices based on node offset and array lower bound
-                std::array<int, 3> nodeIds = {
-                    nodeOffset + n1 - (nodeArray.IsNull() ? 1 : nodeArray->Lower()),
-                    nodeOffset + n2 - (nodeArray.IsNull() ? 1 : nodeArray->Lower()),
-                    nodeOffset + n3 - (nodeArray.IsNull() ? 1 : nodeArray->Lower())
-                };
+            // Adjust indices based on node offset and array lower bound
+            std::array<int, 3> nodeIds = {
+                nodeOffset + n1 - nodes.Lower(),
+                nodeOffset + n2 - nodes.Lower(),
+                nodeOffset + n3 - nodes.Lower()
+            };
 
-                auto meshElement = std::make_unique<MeshElement>(nodeIds, elementId++, faceId);
-                boundaryFace->elementIds.push_back(meshElement->id);
-                m_elements.push_back(std::move(meshElement));
-            }
+            auto meshElement = std::make_unique<MeshElement>(nodeIds, elementId++, faceId);
+            boundaryFace->elementIds.push_back(meshElement->id);
+            m_elements.push_back(std::move(meshElement));
         }
         
         m_faces.push_back(std::move(boundaryFace));
-        if (!nodeArray.IsNull()) {
-            nodeOffset += nodeArray->Upper() - nodeArray->Lower() + 1;
-        } else {
-            nodeOffset += triangulation->NbNodes();
-        }
+        // Update node offset with the number of nodes we processed
+        nodeOffset += nodes.Upper() - nodes.Lower() + 1;
     }
 }
 
